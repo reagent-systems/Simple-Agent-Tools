@@ -3,9 +3,8 @@ This is for the tools/commands that simple agent have access to!
 
 ### Contribution Guidelines
 
-1. **New Connectors**: When adding a new connector, create a dedicated folder under either `C2C/` or `C23/` based on its purpose. Include documentation on setup and usage.
-2. **Documentation**: All updates should include necessary documentation updates in the `docs/` folder, especially if they affect existing protocol structures.
-3. **Code Reviews**: All new code contributions require code review approval from at least one senior developer.
+1. **Documentation**: All updates should include necessary documentation updates in the `docs/` folder, especially if they affect existing protocol structures.
+2. **Code Reviews**: All new code contributions require code review approval from at least one senior developer.
 
 ### Commit References
 
