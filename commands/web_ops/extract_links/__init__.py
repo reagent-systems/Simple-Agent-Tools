@@ -1,136 +1,44 @@
 """Extract links command for SimpleAgent.
 
-This module provides the extract_links command for fetching and categorizing links from a webpage.
+This module provides the extract_links command for fetching and categorizing links from web pages.
 """
 
-import random
+import os
 import requests
-from bs4 import BeautifulSoup
 from typing import Dict, Any, List
+from bs4 import BeautifulSoup
 from urllib.parse import urljoin, urlparse
 from commands import register_command
 
 
-class UserAgentManager:
-    """Manages a rotating list of user agents for web requests."""
+class GoogleSearchManager:
+    """Manages Google Custom Search API requests."""
     
     def __init__(self):
-        # Chrome versions - different from others
-        self.chrome_versions = ['121.0.6167.85', '122.0.6261.39', '123.0.6312.58', 
-                              '124.0.6367.79', '125.0.6422.60', '126.0.6478.40',
-                              '127.0.6533.40', '128.0.6587.40', '129.0.6637.40']
+        """Initialize the Google Search Manager with credentials from environment variables."""
+        self.api_key = os.getenv('GOOGLE_SEARCH_API_KEY')
+        self.cx = os.getenv('GOOGLE_SEARCH_CX')
         
-        # Firefox versions - different from others
-        self.firefox_versions = ['121.0', '122.0', '123.0', '124.0', '125.0', '126.0',
-                               '127.0', '128.0', '129.0', '130.0', '131.0']
-        
-        # Safari versions - different from others
-        self.safari_versions = ['17.1', '17.2', '17.3', '17.4', '17.5', '17.6',
-                              '17.7', '18.0', '18.1', '18.2', '18.3']
-        
-        # Operating systems - different combinations
-        self.windows_versions = [
-            'Windows NT 11.0; Win64; x64',
-            'Windows NT 10.0; Win64; x64',
-            'Windows NT 11.0; ARM64',
-            'Windows NT 10.0; ARM64',
-            'Windows NT 11.0; x64',
-            'Windows NT 10.0; x64',
-            'Windows NT 11.0; Win64; x64; rv:120.0'
-        ]
-        
-        self.mac_versions = [
-            'Macintosh; Apple M3 Mac OS X 14_0_1',
-            'Macintosh; Apple M2 Mac OS X 14_0_1',
-            'Macintosh; Apple M1 Mac OS X 14_0_1',
-            'Macintosh; Apple M3 Pro Mac OS X 14_0_1',
-            'Macintosh; Apple M2 Pro Mac OS X 14_0_1',
-            'Macintosh; Apple M1 Pro Mac OS X 14_0_1',
-            'Macintosh; Apple M3 Max Mac OS X 14_0_1'
-        ]
-        
-        self.linux_versions = [
-            'X11; Linux aarch64',
-            'X11; Linux x86_64',
-            'X11; Ubuntu; Linux x86_64',
-            'X11; Fedora; Linux x86_64',
-            'X11; Debian; Linux x86_64',
-            'X11; Linux i686'
-        ]
-        
-        # Mobile devices - different set
-        self.mobile_devices = [
-            'iPhone; CPU iPhone OS 17_4 like Mac OS X',
-            'iPhone; CPU iPhone OS 18_0 like Mac OS X',
-            'iPhone; CPU iPhone OS 18_1 like Mac OS X',
-            'iPad; CPU OS 17_4 like Mac OS X',
-            'iPad; CPU OS 18_0 like Mac OS X',
-            'iPad; CPU OS 18_1 like Mac OS X',
-            'Linux; Android 14; Pixel 8 Pro',
-            'Linux; Android 14; SM-S928B',
-            'Linux; Android 14; SM-S918B',
-            'Linux; Android 14; OnePlus 12',
-            'Linux; Android 14; SM-S928U'
-        ]
-        
-        # Build the full user agent list
-        self.user_agents = self._generate_user_agents()
-        self.last_request_time = 0
-        self.min_delay = 2.0  # Different delay for link extraction
-        
-    def _generate_user_agents(self) -> List[str]:
-        """Generate a diverse list of user agents."""
-        agents = []
-        
-        # Desktop Chrome with variations
-        for os in self.windows_versions + self.mac_versions + self.linux_versions:
-            for version in self.chrome_versions:
-                webkit_version = f"537.{random.randint(60, 70)}"
-                agents.append(
-                    f'Mozilla/5.0 ({os}) AppleWebKit/{webkit_version} (KHTML, like Gecko) '
-                    f'Chrome/{version} Safari/{webkit_version}'
-                )
-        
-        # Desktop Firefox with variations
-        for os in self.windows_versions + self.mac_versions + self.linux_versions:
-            for version in self.firefox_versions:
-                gecko_version = f"20100101 Firefox/{version}"
-                agents.append(
-                    f'Mozilla/5.0 ({os}; rv:{version}) Gecko/{gecko_version}'
-                )
-        
-        # Desktop Safari with variations
-        for os in self.mac_versions:
-            for version in self.safari_versions:
-                webkit_version = f"605.{random.randint(1, 2)}.{random.randint(40, 50)}"
-                agents.append(
-                    f'Mozilla/5.0 ({os}) AppleWebKit/{webkit_version} (KHTML, like Gecko) '
-                    f'Version/{version} Safari/{webkit_version}'
-                )
-        
-        # Mobile browsers with variations
-        for device in self.mobile_devices:
-            # Mobile Chrome
-            webkit_version = f"537.{random.randint(60, 70)}"
-            agents.append(
-                f'Mozilla/5.0 ({device}) AppleWebKit/{webkit_version} (KHTML, like Gecko) '
-                f'Chrome/{random.choice(self.chrome_versions)} Mobile Safari/{webkit_version}'
+        if not self.api_key or not self.cx:
+            raise ValueError(
+                "Google API credentials not found. Please set the following environment variables:\n"
+                "GOOGLE_SEARCH_API_KEY: Your Google Custom Search API key\n"
+                "GOOGLE_SEARCH_CX: Your Custom Search Engine ID"
             )
             
-            # Mobile Safari (iOS)
-            if 'iPhone' in device or 'iPad' in device:
-                webkit_version = f"605.{random.randint(1, 2)}.{random.randint(40, 50)}"
-                agents.append(
-                    f'Mozilla/5.0 ({device}) AppleWebKit/{webkit_version} (KHTML, like Gecko) '
-                    f'Version/{random.choice(self.safari_versions)} Mobile/15E148 Safari/{webkit_version}'
-                )
+        self.base_url = "https://www.googleapis.com/customsearch/v1"
+        self.last_request_time = 0
+        self.min_delay = 1  # Minimum delay between requests in seconds
         
-        return agents
-    
-    def get_headers(self) -> Dict[str, str]:
-        """Get random headers including user agent and other browser-like headers."""
+    def search(
+        self,
+        query: str,
+        num_results: int = 10,
+        start_index: int = 1,
+        language: str = "en"
+    ) -> Dict[str, Any]:
+        """Perform a search using Google Custom Search API."""
         import time
-        from random import uniform
         
         # Add delay between requests
         current_time = time.time()
@@ -140,167 +48,133 @@ class UserAgentManager:
                 time.sleep(self.min_delay - elapsed)
         self.last_request_time = time.time()
         
-        agent = random.choice(self.user_agents)
-        
-        # More randomized headers
-        accept_languages = [
-            'en-GB,en;q=0.9',
-            'en-CA,en;q=0.9',
-            'en-AU,en;q=0.9',
-            'en-NZ,en;q=0.9',
-            'en-ZA,en;q=0.9'
-        ]
-        
-        # Common accept headers with randomization
-        headers = {
-            'User-Agent': agent,
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-            'Accept-Language': random.choice(accept_languages),
-            'Accept-Encoding': 'gzip, deflate, br',
-            'DNT': str(random.randint(0, 1)),
-            'Connection': 'keep-alive',
-            'Upgrade-Insecure-Requests': '1',
-            'Sec-Fetch-Dest': random.choice(['document', 'empty', 'object', 'image']),
-            'Sec-Fetch-Mode': random.choice(['navigate', 'cors', 'no-cors', 'websocket']),
-            'Sec-Fetch-Site': random.choice(['none', 'same-origin', 'same-site', 'cross-site']),
-            'Sec-Fetch-User': '?1',
-            'Cache-Control': random.choice(['max-age=0', 'no-cache', 'no-store', 'private', 'must-revalidate']),
-            'Pragma': random.choice(['no-cache', '']),
-            'Sec-Ch-Ua': f'"Not_A Brand";v="8", "Chromium";v="{random.randint(125, 145)}"',
-            'Sec-Ch-Ua-Mobile': random.choice(['?0', '?1']),
-            'Sec-Ch-Ua-Platform': random.choice(['"Windows"', '"macOS"', '"Linux"', '"Android"', '"iOS"']),
-            'Sec-Ch-Ua-Platform-Version': f'"{random.randint(10, 14)}.0.0"',
-            'Sec-Ch-Ua-Full-Version': f'"{random.randint(125, 145)}.0.0.0"',
-            'Referer': 'https://www.google.com/'
+        # Prepare parameters
+        params = {
+            'key': self.api_key,
+            'cx': self.cx,
+            'q': query,
+            'num': min(num_results, 10),
+            'start': start_index,
+            'lr': f"lang_{language}",
+            'safe': 'active'
         }
-        
-        return headers
+            
+        try:
+            response = requests.get(self.base_url, params=params)
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.RequestException as e:
+            return {
+                "error": str(e),
+                "status_code": getattr(e.response, 'status_code', None)
+            }
 
 
-# Create a singleton instance
-user_agent_manager = UserAgentManager()
-
-
-def extract_links(url: str, categorize: bool = True, follow_redirects: bool = False) -> Dict[str, Any]:
+def extract_links(
+    query: str,
+    num_results: int = 5,
+    max_links_per_page: int = 50,
+    categorize: bool = True
+) -> Dict[str, Any]:
     """
-    Extract all links from a webpage with optional categorization.
+    Search web pages and extract links using Google Custom Search API.
     
     Args:
-        url: The URL to extract links from
-        categorize: Whether to categorize links by type (default: True)
-        follow_redirects: Whether to follow redirects when categorizing external links (default: False)
+        query: The search query
+        num_results: Number of search results to process (default: 5)
+        max_links_per_page: Maximum number of links to extract per page (default: 50)
+        categorize: Whether to categorize the links (default: True)
         
     Returns:
-        Dictionary containing the extracted links
+        Dictionary containing search results and extracted links
     """
     try:
-        # Get random headers for this request
-        headers = user_agent_manager.get_headers()
+        # Initialize search manager
+        search_manager = GoogleSearchManager()
         
-        # Fetch the page
-        response = requests.get(url, headers=headers, timeout=15)
-        response.raise_for_status()
+        # Perform the search
+        search_results = search_manager.search(
+            query=query,
+            num_results=num_results
+        )
         
-        # Parse the content
-        soup = BeautifulSoup(response.text, 'html.parser')
-        
-        # Extract base URL components for relative link resolution
-        parsed_url = urlparse(url)
-        base_domain = parsed_url.netloc
-        base_scheme = parsed_url.scheme
-        base_url = f"{base_scheme}://{base_domain}"
-        
-        # Find all links in the page
-        all_links = []
-        for link in soup.find_all('a', href=True):
-            href = link.get('href')
-            if href and not href.startswith(('javascript:', 'mailto:', 'tel:')):
-                # Create the full URL if it's a relative link
-                full_url = urljoin(url, href)
+        if "error" in search_results:
+            return search_results
+            
+        # Process results
+        results = []
+        for item in search_results.get("items", []):
+            try:
+                # Fetch the page
+                response = requests.get(item["link"], timeout=15)
+                response.raise_for_status()
                 
-                # Get link text and title
-                link_text = link.get_text(strip=True) or "[No Text]"
-                link_title = link.get('title', '')
+                # Parse the content
+                soup = BeautifulSoup(response.text, 'html.parser')
                 
-                all_links.append({
-                    "url": full_url,
-                    "text": link_text[:100] + ("..." if len(link_text) > 100 else ""),
-                    "title": link_title,
-                    "is_relative": not bool(urlparse(href).netloc)
+                # Initialize result dictionary
+                result = {
+                    "url": item["link"],
+                    "title": item.get("title", ""),
+                    "links": []
+                }
+                
+                # Extract all links
+                links = []
+                for a in soup.find_all('a', href=True):
+                    href = a.get('href')
+                    if href:
+                        # Make relative URLs absolute
+                        absolute_url = urljoin(item["link"], href)
+                        parsed_url = urlparse(absolute_url)
+                        
+                        # Skip javascript: and mailto: links
+                        if parsed_url.scheme in ['http', 'https']:
+                            link_info = {
+                                "url": absolute_url,
+                                "text": a.get_text(strip=True),
+                                "title": a.get('title', '')
+                            }
+                            
+                            if categorize:
+                                # Categorize the link
+                                if parsed_url.netloc == urlparse(item["link"]).netloc:
+                                    link_info["type"] = "internal"
+                                else:
+                                    link_info["type"] = "external"
+                                    
+                                # Add file type if present
+                                path = parsed_url.path.lower()
+                                if path.endswith(('.pdf', '.doc', '.docx', '.xls', '.xlsx')):
+                                    link_info["file_type"] = path.split('.')[-1]
+                            
+                            links.append(link_info)
+                            
+                            if len(links) >= max_links_per_page:
+                                break
+                
+                result["links"] = links
+                result["total_links"] = len(links)
+                results.append(result)
+                
+            except Exception as e:
+                results.append({
+                    "url": item["link"],
+                    "error": str(e)
                 })
         
-        result = {
-            "url": url,
-            "title": soup.title.string if soup.title else None,
-            "total_links": len(all_links),
-            "links": all_links
+        return {
+            "query": query,
+            "results": results,
+            "total_results": len(results),
+            "search_information": search_results.get("searchInformation", {})
         }
-        
-        # Categorize links if requested
-        if categorize:
-            internal_links = []
-            external_links = []
-            media_links = []
-            document_links = []
-            
-            # Media and document extensions
-            media_exts = ['.jpg', '.jpeg', '.png', '.gif', '.svg', '.webp', '.mp4', '.webm', '.avi', '.mov']
-            doc_exts = ['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', '.txt', '.csv', '.zip', '.rar']
-            
-            for link in all_links:
-                link_url = link["url"]
-                parsed_link = urlparse(link_url)
-                
-                # Check if link is internal or external
-                if parsed_link.netloc == base_domain or not parsed_link.netloc:
-                    internal_links.append(link)
-                else:
-                    # If we need to follow redirects to check final URL
-                    if follow_redirects:
-                        try:
-                            head_response = requests.head(link_url, headers=headers, timeout=5, allow_redirects=True)
-                            link["final_url"] = head_response.url
-                            link["status_code"] = head_response.status_code
-                        except Exception:
-                            # If we can't follow the redirect, just use the original URL
-                            link["final_url"] = link_url
-                            link["status_code"] = None
-                    
-                    external_links.append(link)
-                
-                # Check if it's a media link
-                if any(link_url.lower().endswith(ext) for ext in media_exts):
-                    media_links.append(link)
-                
-                # Check if it's a document link
-                if any(link_url.lower().endswith(ext) for ext in doc_exts):
-                    document_links.append(link)
-            
-            result["categories"] = {
-                "internal_links": {
-                    "count": len(internal_links),
-                    "links": internal_links
-                },
-                "external_links": {
-                    "count": len(external_links),
-                    "links": external_links
-                },
-                "media_links": {
-                    "count": len(media_links),
-                    "links": media_links
-                },
-                "document_links": {
-                    "count": len(document_links),
-                    "links": document_links
-                }
-            }
-        
-        return result
         
     except Exception as e:
         return {
-            "error": f"Failed to extract links: {str(e)}",
-            "url": url
+            "error": str(e),
+            "query": query,
+            "results": []
         }
 
 
@@ -309,26 +183,31 @@ EXTRACT_LINKS_SCHEMA = {
     "type": "function",
     "function": {
         "name": "extract_links",
-        "description": "Extract and optionally categorize all links from a webpage",
+        "description": "Search web pages and extract links using Google Custom Search API",
         "parameters": {
             "type": "object",
             "properties": {
-                "url": {
+                "query": {
                     "type": "string",
-                    "description": "The URL to extract links from"
+                    "description": "The search query"
+                },
+                "num_results": {
+                    "type": "integer",
+                    "description": "Number of search results to process (default: 5)",
+                    "default": 5
+                },
+                "max_links_per_page": {
+                    "type": "integer",
+                    "description": "Maximum number of links to extract per page (default: 50)",
+                    "default": 50
                 },
                 "categorize": {
                     "type": "boolean",
-                    "description": "Whether to categorize links by type (default: true)",
+                    "description": "Whether to categorize the links (default: true)",
                     "default": True
-                },
-                "follow_redirects": {
-                    "type": "boolean",
-                    "description": "Whether to follow redirects when categorizing external links (default: false)",
-                    "default": False
                 }
             },
-            "required": ["url"]
+            "required": ["query"]
         }
     }
 }

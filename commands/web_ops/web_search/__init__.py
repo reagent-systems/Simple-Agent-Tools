@@ -1,152 +1,65 @@
 """
 Web search command for SimpleAgent.
 
-This module provides the web_search command for searching the web and retrieving information.
+This module provides the web_search command for searching the web using Google Custom Search API.
 """
 
 import json
-import random
-from typing import List, Dict, Any
-from googlesearch import search
+import os
 import requests
-from bs4 import BeautifulSoup
+from typing import Dict, Any, Optional, Tuple
 from commands import register_command
 
 
-class UserAgentManager:
-    """Manages a rotating list of user agents for web requests."""
+class GoogleSearchManager:
+    """Manages Google Custom Search API requests."""
     
     def __init__(self):
-        # More recent Chrome versions
-        self.chrome_versions = ['108.0.5359.98', '109.0.5414.119', '110.0.5481.177', 
-                              '111.0.5563.64', '112.0.5615.49', '113.0.5672.63', 
-                              '114.0.5735.106', '115.0.5790.102', '116.0.5845.96',
-                              '117.0.5938.62', '118.0.5993.70', '119.0.6045.105',
-                              '120.0.6099.109', '121.0.6167.85']
+        """Initialize the Google Search Manager with credentials from environment variables."""
+        self.api_key = os.getenv('GOOGLE_SEARCH_API_KEY')
+        self.cx = os.getenv('GOOGLE_SEARCH_CX')
         
-        # More recent Firefox versions
-        self.firefox_versions = ['102.0', '103.0', '104.0', '105.0', '106.0', '107.0',
-                               '108.0', '109.0', '110.0', '111.0', '112.0', '113.0',
-                               '114.0', '115.0', '116.0', '117.0', '118.0', '119.0',
-                               '120.0', '121.0']
-        
-        # More recent Safari versions
-        self.safari_versions = ['15.6.1', '16.0', '16.1', '16.2', '16.3', '16.4',
-                              '16.5', '16.6', '17.0', '17.1', '17.2', '17.3']
-        
-        # More diverse operating systems
-        self.windows_versions = [
-            'Windows NT 10.0; Win64; x64',
-            'Windows NT 11.0; Win64; x64',
-            'Windows NT 10.0; WOW64',
-            'Windows NT 11.0; WOW64'
-        ]
-        
-        self.mac_versions = [
-            'Macintosh; Intel Mac OS X 10_15_7',
-            'Macintosh; Intel Mac OS X 11_5_2',
-            'Macintosh; Intel Mac OS X 12_0_1',
-            'Macintosh; Intel Mac OS X 13_0_1',
-            'Macintosh; Intel Mac OS X 14_0_1',
-            'Macintosh; Apple M1 Mac OS X 10_15_7',
-            'Macintosh; Apple M2 Mac OS X 13_0_1'
-        ]
-        
-        self.linux_versions = [
-            'X11; Linux x86_64',
-            'X11; Ubuntu; Linux x86_64',
-            'X11; Fedora; Linux x86_64',
-            'X11; Debian; Linux x86_64',
-            'X11; Linux i686',
-            'X11; Linux armv7l'
-        ]
-        
-        # More diverse mobile devices
-        self.mobile_devices = [
-            'iPhone; CPU iPhone OS 15_0 like Mac OS X',
-            'iPhone; CPU iPhone OS 16_0 like Mac OS X',
-            'iPhone; CPU iPhone OS 17_0 like Mac OS X',
-            'iPad; CPU OS 15_0 like Mac OS X',
-            'iPad; CPU OS 16_0 like Mac OS X',
-            'iPad; CPU OS 17_0 like Mac OS X',
-            'Linux; Android 12; SM-G991B',
-            'Linux; Android 13; SM-G991B',
-            'Linux; Android 14; SM-G991B',
-            'Linux; Android 12; Pixel 6',
-            'Linux; Android 13; Pixel 6',
-            'Linux; Android 14; Pixel 6',
-            'Linux; Android 12; Pixel 7',
-            'Linux; Android 13; Pixel 7',
-            'Linux; Android 14; Pixel 7',
-            'Linux; Android 12; OnePlus 9 Pro',
-            'Linux; Android 13; OnePlus 9 Pro',
-            'Linux; Android 14; OnePlus 9 Pro',
-            'Linux; Android 12; SM-S908B',
-            'Linux; Android 13; SM-S908B',
-            'Linux; Android 14; SM-S908B'
-        ]
-        
-        # Build the full user agent list
-        self.user_agents = self._generate_user_agents()
-        self.last_request_time = 0
-        self.min_delay = 2  # Minimum delay between requests in seconds
-        
-    def _generate_user_agents(self) -> List[str]:
-        """Generate a diverse list of user agents."""
-        agents = []
-        
-        # Desktop Chrome with more variations
-        for os in self.windows_versions + self.mac_versions + self.linux_versions:
-            for version in self.chrome_versions:
-                # Add some randomization to the WebKit version
-                webkit_version = f"537.{random.randint(30, 40)}"
-                agents.append(
-                    f'Mozilla/5.0 ({os}) AppleWebKit/{webkit_version} (KHTML, like Gecko) '
-                    f'Chrome/{version} Safari/{webkit_version}'
-                )
-        
-        # Desktop Firefox with more variations
-        for os in self.windows_versions + self.mac_versions + self.linux_versions:
-            for version in self.firefox_versions:
-                # Add some randomization to the Gecko version
-                gecko_version = f"20100101 Firefox/{version}"
-                agents.append(
-                    f'Mozilla/5.0 ({os}; rv:{version}) Gecko/{gecko_version}'
-                )
-        
-        # Desktop Safari with more variations
-        for os in self.mac_versions:
-            for version in self.safari_versions:
-                # Add some randomization to the WebKit version
-                webkit_version = f"605.{random.randint(1, 2)}.{random.randint(10, 20)}"
-                agents.append(
-                    f'Mozilla/5.0 ({os}) AppleWebKit/{webkit_version} (KHTML, like Gecko) '
-                    f'Version/{version} Safari/{webkit_version}'
-                )
-        
-        # Mobile browsers with more variations
-        for device in self.mobile_devices:
-            # Mobile Chrome with variations
-            webkit_version = f"537.{random.randint(30, 40)}"
-            agents.append(
-                f'Mozilla/5.0 ({device}) AppleWebKit/{webkit_version} (KHTML, like Gecko) '
-                f'Chrome/{random.choice(self.chrome_versions)} Mobile Safari/{webkit_version}'
+        if not self.api_key or not self.cx:
+            raise ValueError(
+                "Google API credentials not found. Please set the following environment variables:\n"
+                "GOOGLE_SEARCH_API_KEY: Your Google Custom Search API key\n"
+                "GOOGLE_SEARCH_CX: Your Custom Search Engine ID"
             )
             
-            # Mobile Safari (iOS) with variations
-            if 'iPhone' in device or 'iPad' in device:
-                webkit_version = f"605.{random.randint(1, 2)}.{random.randint(10, 20)}"
-                agents.append(
-                    f'Mozilla/5.0 ({device}) AppleWebKit/{webkit_version} (KHTML, like Gecko) '
-                    f'Version/{random.choice(self.safari_versions)} Mobile/15E148 Safari/{webkit_version}'
-                )
+        self.base_url = "https://www.googleapis.com/customsearch/v1"
+        self.last_request_time = 0
+        self.min_delay = 1  # Minimum delay between requests in seconds
         
-        return agents
-    
-    def get_headers(self) -> Dict[str, str]:
-        """Get random headers including user agent and other browser-like headers."""
+    def search(
+        self,
+        query: str,
+        num_results: int = 10,
+        start_index: int = 1,
+        language: str = "en",
+        date_restrict: Optional[str] = None,
+        site_search: Optional[str] = None,
+        site_search_filter: Optional[str] = None,
+        file_type: Optional[str] = None,
+        rights: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Perform a search using Google Custom Search API.
+        
+        Args:
+            query: The search query
+            num_results: Number of results to return (max 10 per request)
+            start_index: Starting index for results (for pagination)
+            language: Language to search in
+            date_restrict: Restrict results to a specific time period
+            site_search: Site to search within
+            site_search_filter: Whether to include or exclude the site
+            file_type: Restrict results to specific file types
+            rights: Filter by usage rights
+            
+        Returns:
+            Dictionary containing search results
+        """
         import time
-        from random import uniform
         
         # Add delay between requests
         current_time = time.time()
@@ -156,115 +69,128 @@ class UserAgentManager:
                 time.sleep(self.min_delay - elapsed)
         self.last_request_time = time.time()
         
-        agent = random.choice(self.user_agents)
-        
-        # More randomized headers
-        accept_languages = [
-            'en-US,en;q=0.9',
-            'en-GB,en;q=0.9',
-            'en-CA,en;q=0.9',
-            'en-AU,en;q=0.9',
-            'en-NZ,en;q=0.9'
-        ]
-        
-        # Common accept headers with randomization
-        headers = {
-            'User-Agent': agent,
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-            'Accept-Language': random.choice(accept_languages),
-            'Accept-Encoding': 'gzip, deflate, br',
-            'DNT': str(random.randint(0, 1)),  # Randomize DNT
-            'Connection': 'keep-alive',
-            'Upgrade-Insecure-Requests': '1',
-            'Sec-Fetch-Dest': random.choice(['document', 'empty']),
-            'Sec-Fetch-Mode': random.choice(['navigate', 'cors']),
-            'Sec-Fetch-Site': random.choice(['none', 'same-origin', 'same-site']),
-            'Sec-Fetch-User': '?1',
-            'Cache-Control': random.choice(['max-age=0', 'no-cache', 'no-store']),
-            'Pragma': random.choice(['no-cache', '']),
-            'Sec-Ch-Ua': f'"Not_A Brand";v="8", "Chromium";v="{random.randint(100, 120)}"',
-            'Sec-Ch-Ua-Mobile': random.choice(['?0', '?1']),
-            'Sec-Ch-Ua-Platform': random.choice(['"Windows"', '"macOS"', '"Linux"', '"Android"', '"iOS"'])
+        # Prepare parameters
+        params = {
+            'key': self.api_key,
+            'cx': self.cx,
+            'q': query,
+            'num': min(num_results, 10),  # API limit is 10 per request
+            'start': start_index,
+            'lr': f"lang_{language}",
+            'safe': 'active'
         }
         
-        return headers
+        # Add optional parameters
+        if date_restrict:
+            params['dateRestrict'] = date_restrict
+        if site_search:
+            params['as_sitesearch'] = site_search
+            if site_search_filter:
+                params['as_filter'] = site_search_filter
+        if file_type:
+            params['fileType'] = file_type
+        if rights:
+            params['rights'] = rights
+            
+        try:
+            response = requests.get(self.base_url, params=params)
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.RequestException as e:
+            return {
+                "error": str(e),
+                "status_code": getattr(e.response, 'status_code', None)
+            }
 
 
-# Create a singleton instance
-user_agent_manager = UserAgentManager()
-
-
-def web_search(query: str, num_results: int = 5, include_snippets: bool = True) -> Dict[str, Any]:
+def web_search(
+    query: str,
+    num_results: int = 5,
+    language: str = "en",
+    date_restrict: Optional[str] = None,
+    site_search: Optional[str] = None,
+    site_search_filter: Optional[str] = None,
+    file_type: Optional[str] = None,
+    rights: Optional[str] = None
+) -> Dict[str, Any]:
     """
-    Search the web for information.
+    Search the web using Google Custom Search API.
     
     Args:
         query: The search query
         num_results: Number of results to return (default: 5)
-        include_snippets: Whether to include text snippets from the pages (default: True)
+        language: Language to search in (default: en)
+        date_restrict: Restrict results to a specific time period
+        site_search: Site to search within
+        site_search_filter: Whether to include or exclude the site
+        file_type: Restrict results to specific file types
+        rights: Filter by usage rights
         
     Returns:
-        Dictionary containing search results and snippets
+        Dictionary containing search results
     """
     try:
-        # Get random headers for search requests
-        headers = user_agent_manager.get_headers()
+        # Initialize search manager
+        search_manager = GoogleSearchManager()
         
-        # Perform the search (note: googlesearch-python doesn't accept user_agent directly)
-        search_results = list(search(
-            query, 
-            num_results=num_results,
-            lang="en"
-        ))
+        # Calculate number of requests needed
+        total_results = []
+        remaining_results = num_results
+        start_index = 1
         
-        results = []
-        for url in search_results:
-            try:
-                result = {"url": url}
+        while remaining_results > 0 and len(total_results) < num_results:
+            # Get results for this page
+            results = search_manager.search(
+                query=query,
+                num_results=min(remaining_results, 10),
+                start_index=start_index,
+                language=language,
+                date_restrict=date_restrict,
+                site_search=site_search,
+                site_search_filter=site_search_filter,
+                file_type=file_type,
+                rights=rights
+            )
+            
+            if "error" in results:
+                return results
                 
-                if include_snippets:
-                    # Get new random headers for each page request
-                    page_headers = user_agent_manager.get_headers()
+            # Process results
+            if "items" in results:
+                for item in results["items"]:
+                    result = {
+                        "title": item.get("title", ""),
+                        "url": item.get("link", ""),
+                        "snippet": item.get("snippet", ""),
+                        "display_url": item.get("displayLink", ""),
+                        "file_type": item.get("fileFormat", ""),
+                        "mime_type": item.get("mime", ""),
+                        "image": item.get("pagemap", {}).get("cse_image", [{}])[0].get("src", ""),
+                        "metatags": item.get("pagemap", {}).get("metatags", [{}])[0]
+                    }
+                    total_results.append(result)
                     
-                    # Fetch the page content
-                    response = requests.get(url, headers=page_headers, timeout=10)
-                    response.raise_for_status()
-                    
-                    # Parse the content
-                    soup = BeautifulSoup(response.text, 'html.parser')
-                    
-                    # Get the title
-                    title = soup.title.string if soup.title else "No title"
-                    result["title"] = title
-                    
-                    # Get a relevant snippet (first paragraph or similar)
-                    paragraphs = soup.find_all('p')
-                    if paragraphs:
-                        # Get the first non-empty paragraph
-                        for p in paragraphs:
-                            text = p.get_text().strip()
-                            if text and len(text) > 50:  # Ensure it's a meaningful paragraph
-                                result["snippet"] = text[:500] + "..." if len(text) > 500 else text
-                                break
-                
-                results.append(result)
-                
-            except Exception as e:
-                # If we can't fetch a particular result, just include the URL
-                results.append({
-                    "url": url,
-                    "error": str(e)
-                })
-                
+                    if len(total_results) >= num_results:
+                        break
+            
+            # Update for next iteration
+            remaining_results -= len(results.get("items", []))
+            start_index += len(results.get("items", []))
+            
+            # Check if we've reached the end
+            if "queries" in results and "nextPage" not in results["queries"]:
+                break
+        
         return {
             "query": query,
-            "results": results,
-            "total_results": len(results)
+            "results": total_results,
+            "total_results": len(total_results),
+            "search_information": results.get("searchInformation", {})
         }
         
     except Exception as e:
         return {
-            "error": f"Search failed: {str(e)}",
+            "error": str(e),
             "query": query,
             "results": []
         }
@@ -275,7 +201,7 @@ WEB_SEARCH_SCHEMA = {
     "type": "function",
     "function": {
         "name": "web_search",
-        "description": "Search the web for information about a topic",
+        "description": "Search the web using Google Custom Search API",
         "parameters": {
             "type": "object",
             "properties": {
@@ -288,10 +214,31 @@ WEB_SEARCH_SCHEMA = {
                     "description": "Number of results to return (default: 5)",
                     "default": 5
                 },
-                "include_snippets": {
-                    "type": "boolean",
-                    "description": "Whether to include text snippets from the pages (default: true)",
-                    "default": True
+                "language": {
+                    "type": "string",
+                    "description": "Language to search in (default: en)",
+                    "default": "en"
+                },
+                "date_restrict": {
+                    "type": "string",
+                    "description": "Restrict results to a specific time period (e.g., 'd[number]' for days, 'w[number]' for weeks, 'm[number]' for months, 'y[number]' for years)"
+                },
+                "site_search": {
+                    "type": "string",
+                    "description": "Site to search within"
+                },
+                "site_search_filter": {
+                    "type": "string",
+                    "description": "Whether to include or exclude the site (i: include, e: exclude)",
+                    "enum": ["i", "e"]
+                },
+                "file_type": {
+                    "type": "string",
+                    "description": "Restrict results to specific file types (e.g., 'pdf', 'doc', 'xls')"
+                },
+                "rights": {
+                    "type": "string",
+                    "description": "Filter by usage rights (e.g., 'cc_publicdomain', 'cc_attribute', 'cc_sharealike')"
                 }
             },
             "required": ["query"]
