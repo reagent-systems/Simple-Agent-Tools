@@ -15,97 +15,163 @@ class UserAgentManager:
     """Manages a rotating list of user agents for web requests."""
     
     def __init__(self):
-        # Chrome versions
-        self.chrome_versions = ['91.0.4472.124', '92.0.4515.159', '93.0.4577.82', '94.0.4606.81', 
-                              '95.0.4638.69', '96.0.4664.45', '97.0.4692.71', '98.0.4758.102']
+        # Chrome versions - different from others
+        self.chrome_versions = ['121.0.6167.85', '122.0.6261.39', '123.0.6312.58', 
+                              '124.0.6367.79', '125.0.6422.60', '126.0.6478.40',
+                              '127.0.6533.40', '128.0.6587.40', '129.0.6637.40']
         
-        # Firefox versions
-        self.firefox_versions = ['89.0', '90.0', '91.0', '92.0', '93.0', '94.0', '95.0', '96.0']
+        # Firefox versions - different from others
+        self.firefox_versions = ['121.0', '122.0', '123.0', '124.0', '125.0', '126.0',
+                               '127.0', '128.0', '129.0', '130.0', '131.0']
         
-        # Safari versions
-        self.safari_versions = ['14.0', '14.1', '15.0', '15.1', '15.2', '15.3', '15.4']
+        # Safari versions - different from others
+        self.safari_versions = ['17.1', '17.2', '17.3', '17.4', '17.5', '17.6',
+                              '17.7', '18.0', '18.1', '18.2', '18.3']
         
-        # Operating systems
-        self.windows_versions = ['Windows NT 10.0', 'Windows NT 11.0']
-        self.mac_versions = ['Macintosh; Intel Mac OS X 10_15_7', 
-                           'Macintosh; Intel Mac OS X 11_5_2',
-                           'Macintosh; Intel Mac OS X 12_0_1']
-        self.linux_versions = ['X11; Linux x86_64', 'X11; Ubuntu; Linux x86_64']
+        # Operating systems - different combinations
+        self.windows_versions = [
+            'Windows NT 11.0; Win64; x64',
+            'Windows NT 10.0; Win64; x64',
+            'Windows NT 11.0; ARM64',
+            'Windows NT 10.0; ARM64',
+            'Windows NT 11.0; x64',
+            'Windows NT 10.0; x64',
+            'Windows NT 11.0; Win64; x64; rv:120.0'
+        ]
         
-        # Mobile devices
+        self.mac_versions = [
+            'Macintosh; Apple M3 Mac OS X 14_0_1',
+            'Macintosh; Apple M2 Mac OS X 14_0_1',
+            'Macintosh; Apple M1 Mac OS X 14_0_1',
+            'Macintosh; Apple M3 Pro Mac OS X 14_0_1',
+            'Macintosh; Apple M2 Pro Mac OS X 14_0_1',
+            'Macintosh; Apple M1 Pro Mac OS X 14_0_1',
+            'Macintosh; Apple M3 Max Mac OS X 14_0_1'
+        ]
+        
+        self.linux_versions = [
+            'X11; Linux aarch64',
+            'X11; Linux x86_64',
+            'X11; Ubuntu; Linux x86_64',
+            'X11; Fedora; Linux x86_64',
+            'X11; Debian; Linux x86_64',
+            'X11; Linux i686'
+        ]
+        
+        # Mobile devices - different set
         self.mobile_devices = [
-            'iPhone; CPU iPhone OS 14_7_1 like Mac OS X',
-            'iPhone; CPU iPhone OS 15_0 like Mac OS X',
-            'iPad; CPU OS 15_0 like Mac OS X',
-            'Linux; Android 11; SM-G991B',
-            'Linux; Android 12; Pixel 6',
-            'Linux; Android 11; OnePlus 9 Pro'
+            'iPhone; CPU iPhone OS 17_4 like Mac OS X',
+            'iPhone; CPU iPhone OS 18_0 like Mac OS X',
+            'iPhone; CPU iPhone OS 18_1 like Mac OS X',
+            'iPad; CPU OS 17_4 like Mac OS X',
+            'iPad; CPU OS 18_0 like Mac OS X',
+            'iPad; CPU OS 18_1 like Mac OS X',
+            'Linux; Android 14; Pixel 8 Pro',
+            'Linux; Android 14; SM-S928B',
+            'Linux; Android 14; SM-S918B',
+            'Linux; Android 14; OnePlus 12',
+            'Linux; Android 14; SM-S928U'
         ]
         
         # Build the full user agent list
         self.user_agents = self._generate_user_agents()
+        self.last_request_time = 0
+        self.min_delay = 2.0  # Different delay for link extraction
         
     def _generate_user_agents(self) -> List[str]:
         """Generate a diverse list of user agents."""
         agents = []
         
-        # Desktop Chrome
+        # Desktop Chrome with variations
         for os in self.windows_versions + self.mac_versions + self.linux_versions:
             for version in self.chrome_versions:
+                webkit_version = f"537.{random.randint(60, 70)}"
                 agents.append(
-                    f'Mozilla/5.0 ({os}) AppleWebKit/537.36 (KHTML, like Gecko) '
-                    f'Chrome/{version} Safari/537.36'
+                    f'Mozilla/5.0 ({os}) AppleWebKit/{webkit_version} (KHTML, like Gecko) '
+                    f'Chrome/{version} Safari/{webkit_version}'
                 )
         
-        # Desktop Firefox
+        # Desktop Firefox with variations
         for os in self.windows_versions + self.mac_versions + self.linux_versions:
             for version in self.firefox_versions:
+                gecko_version = f"20100101 Firefox/{version}"
                 agents.append(
-                    f'Mozilla/5.0 ({os}; rv:{version}) Gecko/20100101 Firefox/{version}'
+                    f'Mozilla/5.0 ({os}; rv:{version}) Gecko/{gecko_version}'
                 )
         
-        # Desktop Safari
+        # Desktop Safari with variations
         for os in self.mac_versions:
             for version in self.safari_versions:
+                webkit_version = f"605.{random.randint(1, 2)}.{random.randint(40, 50)}"
                 agents.append(
-                    f'Mozilla/5.0 ({os}) AppleWebKit/605.1.15 (KHTML, like Gecko) '
-                    f'Version/{version} Safari/605.1.15'
+                    f'Mozilla/5.0 ({os}) AppleWebKit/{webkit_version} (KHTML, like Gecko) '
+                    f'Version/{version} Safari/{webkit_version}'
                 )
         
-        # Mobile browsers
+        # Mobile browsers with variations
         for device in self.mobile_devices:
             # Mobile Chrome
+            webkit_version = f"537.{random.randint(60, 70)}"
             agents.append(
-                f'Mozilla/5.0 ({device}) AppleWebKit/537.36 (KHTML, like Gecko) '
-                f'Chrome/{random.choice(self.chrome_versions)} Mobile Safari/537.36'
+                f'Mozilla/5.0 ({device}) AppleWebKit/{webkit_version} (KHTML, like Gecko) '
+                f'Chrome/{random.choice(self.chrome_versions)} Mobile Safari/{webkit_version}'
             )
+            
             # Mobile Safari (iOS)
             if 'iPhone' in device or 'iPad' in device:
+                webkit_version = f"605.{random.randint(1, 2)}.{random.randint(40, 50)}"
                 agents.append(
-                    f'Mozilla/5.0 ({device}) AppleWebKit/605.1.15 (KHTML, like Gecko) '
-                    f'Version/{random.choice(self.safari_versions)} Mobile/15E148 Safari/604.1'
+                    f'Mozilla/5.0 ({device}) AppleWebKit/{webkit_version} (KHTML, like Gecko) '
+                    f'Version/{random.choice(self.safari_versions)} Mobile/15E148 Safari/{webkit_version}'
                 )
         
         return agents
     
     def get_headers(self) -> Dict[str, str]:
         """Get random headers including user agent and other browser-like headers."""
+        import time
+        from random import uniform
+        
+        # Add delay between requests
+        current_time = time.time()
+        if self.last_request_time > 0:
+            elapsed = current_time - self.last_request_time
+            if elapsed < self.min_delay:
+                time.sleep(self.min_delay - elapsed)
+        self.last_request_time = time.time()
+        
         agent = random.choice(self.user_agents)
         
-        # Common accept headers
+        # More randomized headers
+        accept_languages = [
+            'en-GB,en;q=0.9',
+            'en-CA,en;q=0.9',
+            'en-AU,en;q=0.9',
+            'en-NZ,en;q=0.9',
+            'en-ZA,en;q=0.9'
+        ]
+        
+        # Common accept headers with randomization
         headers = {
             'User-Agent': agent,
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-            'Accept-Language': 'en-US,en;q=0.5',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+            'Accept-Language': random.choice(accept_languages),
             'Accept-Encoding': 'gzip, deflate, br',
-            'DNT': '1',  # Do Not Track
+            'DNT': str(random.randint(0, 1)),
             'Connection': 'keep-alive',
             'Upgrade-Insecure-Requests': '1',
-            'Sec-Fetch-Dest': 'document',
-            'Sec-Fetch-Mode': 'navigate',
-            'Sec-Fetch-Site': 'none',
+            'Sec-Fetch-Dest': random.choice(['document', 'empty', 'object', 'image']),
+            'Sec-Fetch-Mode': random.choice(['navigate', 'cors', 'no-cors', 'websocket']),
+            'Sec-Fetch-Site': random.choice(['none', 'same-origin', 'same-site', 'cross-site']),
             'Sec-Fetch-User': '?1',
-            'Cache-Control': 'max-age=0'
+            'Cache-Control': random.choice(['max-age=0', 'no-cache', 'no-store', 'private', 'must-revalidate']),
+            'Pragma': random.choice(['no-cache', '']),
+            'Sec-Ch-Ua': f'"Not_A Brand";v="8", "Chromium";v="{random.randint(125, 145)}"',
+            'Sec-Ch-Ua-Mobile': random.choice(['?0', '?1']),
+            'Sec-Ch-Ua-Platform': random.choice(['"Windows"', '"macOS"', '"Linux"', '"Android"', '"iOS"']),
+            'Sec-Ch-Ua-Platform-Version': f'"{random.randint(10, 14)}.0.0"',
+            'Sec-Ch-Ua-Full-Version': f'"{random.randint(125, 145)}.0.0.0"',
+            'Referer': 'https://www.google.com/'
         }
         
         return headers
