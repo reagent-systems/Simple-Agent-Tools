@@ -7,6 +7,7 @@ with specific criteria and retrieving their information.
 
 import json
 import requests
+import os
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 from commands import register_command
@@ -111,13 +112,9 @@ def github_repo_search(
     created_after: Optional[str] = None,
     sort: str = "stars",
     order: str = "desc",
-    per_page: int = 10,
-    token: Optional[str] = None,
-    save_readme: bool = False,
-    output_file: Optional[str] = None
+    per_page: int = 10
 ) -> Dict[str, Any]:
-    """
-    Search GitHub repositories with various criteria and optionally save README contents.
+    """Search GitHub repositories with various criteria.
     
     Args:
         query: The search query
@@ -128,80 +125,38 @@ def github_repo_search(
         sort: Sort results by (stars, forks, updated)
         order: Sort order (asc, desc)
         per_page: Number of results per page
-        token: GitHub API token for authentication
-        save_readme: Whether to save README contents to a file
-        output_file: File path to save README contents (default: project_info.md)
         
     Returns:
-        Dictionary containing search results and repository information
+        Dictionary containing search results
     """
-    # Initialize search manager
-    search_manager = GitHubSearchManager()
-    
-    # Perform the search
-    search_results = search_manager.search_repositories(
-        query=query,
-        min_stars=min_stars,
-        min_forks=min_forks,
-        language=language,
-        created_after=created_after,
-        sort=sort,
-        order=order,
-        per_page=per_page,
-        token=token
-    )
-    
-    if "error" in search_results:
-        return search_results
-    
-    # Process results
-    processed_results = []
-    for repo in search_results.get("items", []):
-        repo_info = {
-            "name": repo["full_name"],
-            "description": repo["description"],
-            "url": repo["html_url"],
-            "stars": repo["stargazers_count"],
-            "forks": repo["forks_count"],
-            "language": repo["language"],
-            "created_at": repo["created_at"],
-            "updated_at": repo["updated_at"],
-            "topics": repo["topics"],
-            "license": repo["license"]["name"] if repo["license"] else None,
-            "open_issues": repo["open_issues_count"],
-            "default_branch": repo["default_branch"]
+    try:
+        # Get GitHub token from environment if available
+        token = os.getenv("GITHUB_TOKEN")
+        
+        manager = GitHubSearchManager()
+        result = manager.search_repositories(
+            query=query,
+            min_stars=min_stars,
+            min_forks=min_forks,
+            language=language,
+            created_after=created_after,
+            sort=sort,
+            order=order,
+            per_page=per_page,
+            token=token  # Pass token to manager
+        )
+        
+        # Add authentication status to result
+        result["authenticated"] = bool(token)
+        
+        return result
+        
+    except Exception as e:
+        return {
+            "success": False,
+            "error": f"Failed to search repositories: {str(e)}",
+            "query": query
         }
-        
-        # Get README content if requested
-        if save_readme:
-            try:
-                readme_url = f"{search_manager.base_url}/repos/{repo['full_name']}/readme"
-                readme_response = requests.get(readme_url, headers=search_manager.headers)
-                readme_response.raise_for_status()
-                readme_content = readme_response.content.decode('utf-8')
-                repo_info["readme_content"] = readme_content
-                
-                # Save README to file if output_file specified
-                if output_file:
-                    with open(output_file, 'w', encoding='utf-8') as f:
-                        f.write(f"# {repo['full_name']}\n\n")
-                        f.write(f"URL: {repo['html_url']}\n\n")
-                        f.write(f"Stars: {repo['stargazers_count']}\n")
-                        f.write(f"Forks: {repo['forks_count']}\n")
-                        f.write(f"Language: {repo['language']}\n\n")
-                        f.write("## Description\n\n")
-                        f.write(f"{repo['description']}\n\n")
-                        f.write("## README\n\n")
-                        f.write(readme_content)
-            except Exception as e:
-                repo_info["readme_error"] = str(e)
-        
-        processed_results.append(repo_info)
-    
-    return {
-        "total_count": search_results["total_count"],
-        "repositories": processed_results
-    }
 
 
 # Register the command
@@ -209,7 +164,7 @@ GITHUB_REPO_SEARCH_SCHEMA = {
     "type": "function",
     "function": {
         "name": "github_repo_search",
-        "description": "Search GitHub repositories with various criteria and optionally save README contents",
+        "description": "Search GitHub repositories with various criteria",
         "parameters": {
             "type": "object",
             "properties": {
@@ -248,18 +203,6 @@ GITHUB_REPO_SEARCH_SCHEMA = {
                     "description": "Number of results per page",
                     "minimum": 1,
                     "maximum": 100
-                },
-                "token": {
-                    "type": "string",
-                    "description": "GitHub API token for authentication"
-                },
-                "save_readme": {
-                    "type": "boolean",
-                    "description": "Whether to save README contents to a file"
-                },
-                "output_file": {
-                    "type": "string",
-                    "description": "File path to save README contents"
                 }
             },
             "required": ["query"]

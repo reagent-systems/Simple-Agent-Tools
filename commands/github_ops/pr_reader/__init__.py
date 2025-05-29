@@ -22,14 +22,14 @@ def pr_reader(
     Args:
         repo_url: The URL of the GitHub repository
         pr_number: Specific PR number to fetch (optional)
-        state: PR state to fetch ('open', 'closed', or 'all')
+        state: PR state to fetch ('open', 'closed', 'all')
         limit: Maximum number of PRs to fetch when not specifying a PR number
-        include_files: Whether to include file changes (only for specific PR)
-        include_comments: Whether to include regular comments on the PR
-        include_review_comments: Whether to include review comments on specific lines of code
+        include_files: Whether to include file changes for the PR(s)
+        include_comments: Whether to include all comments for the PR(s)
+        include_review_comments: Whether to include review comments for the PR(s)
         
     Returns:
-        Dictionary containing pull request information
+        Dictionary containing PR information
     """
     try:
         # Initialize GitHub client with token if available
@@ -143,7 +143,10 @@ def pr_reader(
                     pr_data["file_changes_summary"]["files_by_status"][status] = \
                         pr_data["file_changes_summary"]["files_by_status"].get(status, 0) + 1
 
-            return {"pull_request": pr_data}
+            return {
+                "pull_request": pr_data,
+                "authenticated": bool(token)
+            }
         else:
             # Fetch multiple PRs
             pulls = repo.get_pulls(state=state, sort='updated', direction='desc')
@@ -206,7 +209,8 @@ def pr_reader(
             return {
                 "total_count": len(pr_list),
                 "state": state,
-                "pull_requests": pr_list
+                "pull_requests": pr_list,
+                "authenticated": bool(token)
             }
             
     except GithubException as e:

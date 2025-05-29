@@ -49,7 +49,8 @@ def repo_reader(repo_url: str, include_readme: bool = True, include_files: bool 
             "homepage": repo.homepage,
             "has_wiki": repo.has_wiki,
             "has_pages": repo.has_pages,
-            "archived": repo.archived
+            "archived": repo.archived,
+            "authenticated": bool(token)
         }
         
         # Get README if requested

@@ -41,7 +41,8 @@ def github_read_files(repo_url: str, pr_number: int, file_filter: Optional[str] 
             "pr_number": pr_number,
             "pr_title": pr.title,
             "total_files": pr.changed_files,
-            "files": []
+            "files": [],
+            "authenticated": bool(token)
         }
         
         import re

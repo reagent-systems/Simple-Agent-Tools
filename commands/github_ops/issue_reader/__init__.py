@@ -68,7 +68,8 @@ def issue_reader(repo_url: str, issue_number: Optional[int] = None, state: str =
                 issue_data["comments"] = comments_list
             
             return {
-                "issue": issue_data
+                "issue": issue_data,
+                "authenticated": bool(token)
             }
         else:
             # Fetch multiple issues
@@ -109,7 +110,8 @@ def issue_reader(repo_url: str, issue_number: Optional[int] = None, state: str =
             return {
                 "total_count": len(issue_list),
                 "state": state,
-                "issues": issue_list
+                "issues": issue_list,
+                "authenticated": bool(token)
             }
             
     except GithubException as e:

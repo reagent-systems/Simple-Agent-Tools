@@ -58,7 +58,20 @@ def git_clone(repo_url: str, target_dir: str = "", branch: str = "") -> Dict[str
                 shutil.move(target_path, backup_dir)
                 
         # Prepare command with proper arguments
-        git_cmd = ["git", "clone", repo_url]
+        git_cmd = ["git", "clone"]
+        
+        # Add authentication if GITHUB_TOKEN is available and it's a GitHub URL
+        token = os.getenv("GITHUB_TOKEN")
+        clone_url = repo_url
+        if token and "github.com" in repo_url.lower():
+            # Convert HTTPS GitHub URLs to use token authentication
+            if repo_url.startswith("https://github.com/"):
+                # Format: https://token@github.com/owner/repo.git
+                clone_url = repo_url.replace("https://github.com/", f"https://{token}@github.com/")
+                if not clone_url.endswith('.git'):
+                    clone_url += '.git'
+        
+        git_cmd.append(clone_url)
         
         # Add target directory if specified
         if target_dir:
@@ -78,7 +91,7 @@ def git_clone(repo_url: str, target_dir: str = "", branch: str = "") -> Dict[str
                 "success": False,
                 "error": f"Git clone failed with exit code {process.returncode}",
                 "message": process.stderr,
-                "command": " ".join(git_cmd)
+                "command": " ".join(["git", "clone", repo_url, target_dir] if target_dir else ["git", "clone", repo_url])  # Don't expose token in logs
             }
             
         # Checkout specific branch if specified
@@ -115,7 +128,8 @@ def git_clone(repo_url: str, target_dir: str = "", branch: str = "") -> Dict[str
             "repo_path": target_path,
             "repo_url": repo_url,
             "branch": branch if branch else "default",
-            "files": files
+            "files": files,
+            "authenticated": bool(token and "github.com" in repo_url.lower())
         }
         
     except Exception as e:
