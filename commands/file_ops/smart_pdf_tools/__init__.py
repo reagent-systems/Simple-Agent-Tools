@@ -647,7 +647,7 @@ SMART_PDF_TOOLS_SCHEMA = {
                 "case_sensitive": {
                     "type": "boolean",
                     "description": "Whether text search should be case sensitive",
-                    "default": false
+                    "default": False
                 }
             },
             "required": ["pdf_path"]

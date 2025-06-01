@@ -377,7 +377,7 @@ DOWNLOAD_AND_REVIEW_PDF_SCHEMA = {
                 "include_summary": {
                     "type": "boolean",
                     "description": "Whether to generate a summary of the PDF content",
-                    "default": true
+                    "default": True
                 },
                 "timeout": {
                     "type": "integer",
@@ -389,7 +389,7 @@ DOWNLOAD_AND_REVIEW_PDF_SCHEMA = {
                 "cleanup_temp": {
                     "type": "boolean",
                     "description": "Whether to cleanup temporary files after processing",
-                    "default": true
+                    "default": True
                 }
             },
             "required": ["url"]
