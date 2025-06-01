@@ -11,6 +11,7 @@ import re
 from typing import Dict, Any, Optional, List, Union
 from pathlib import Path
 from commands import register_command
+from collections import Counter
 
 
 class SmartPDFProcessor:
@@ -510,6 +511,172 @@ class SmartPDFProcessor:
             return {
                 "error": f"Text analysis failed: {str(e)}"
             }
+    
+    def chunk_text_by_tokens(self, text: str, max_tokens: int = 25000) -> List[str]:
+        """
+        Split text into chunks based on estimated token count.
+        
+        Args:
+            text: Text to chunk
+            max_tokens: Maximum tokens per chunk (rough estimate: 1 token ≈ 4 characters)
+            
+        Returns:
+            List of text chunks
+        """
+        # Rough estimation: 1 token ≈ 4 characters
+        max_chars = max_tokens * 4
+        
+        if len(text) <= max_chars:
+            return [text]
+        
+        chunks = []
+        words = text.split()
+        current_chunk = []
+        current_length = 0
+        
+        for word in words:
+            word_length = len(word) + 1  # +1 for space
+            
+            if current_length + word_length > max_chars and current_chunk:
+                # Finish current chunk
+                chunks.append(' '.join(current_chunk))
+                current_chunk = [word]
+                current_length = word_length
+            else:
+                current_chunk.append(word)
+                current_length += word_length
+        
+        # Add the last chunk
+        if current_chunk:
+            chunks.append(' '.join(current_chunk))
+        
+        return chunks
+    
+    def extract_text_chunked(self, pdf_path: str, page_range: Optional[tuple] = None, max_tokens_per_chunk: int = 25000) -> Dict[str, Any]:
+        """
+        Extract text from PDF with chunking for large documents.
+        
+        Args:
+            pdf_path: Path to PDF file
+            page_range: Optional tuple (start_page, end_page) for page range
+            max_tokens_per_chunk: Maximum tokens per chunk
+            
+        Returns:
+            Dictionary containing chunked text and metadata
+        """
+        try:
+            # First, extract text normally
+            result = self.extract_text(pdf_path, page_range)
+            
+            if not result["success"]:
+                return result
+            
+            full_text = result["full_text"]
+            
+            # Check if chunking is needed
+            estimated_tokens = len(full_text) // 4  # Rough estimate
+            
+            if estimated_tokens <= max_tokens_per_chunk:
+                # No chunking needed
+                result["chunks"] = [full_text]
+                result["chunked"] = False
+                result["estimated_tokens"] = estimated_tokens
+                return result
+            
+            # Chunk the text
+            chunks = self.chunk_text_by_tokens(full_text, max_tokens_per_chunk)
+            
+            # Create chunk summaries
+            chunk_summaries = []
+            for i, chunk in enumerate(chunks):
+                analysis = self.analyze_text(chunk)
+                chunk_summaries.append({
+                    "chunk_index": i + 1,
+                    "word_count": analysis.get("word_count", 0),
+                    "character_count": analysis.get("character_count", 0),
+                    "preview": chunk[:500] + "..." if len(chunk) > 500 else chunk
+                })
+            
+            result["chunks"] = chunks
+            result["chunked"] = True
+            result["total_chunks"] = len(chunks)
+            result["chunk_summaries"] = chunk_summaries
+            result["estimated_tokens"] = estimated_tokens
+            result["max_tokens_per_chunk"] = max_tokens_per_chunk
+            
+            return result
+            
+        except Exception as e:
+            return {
+                "success": False,
+                "error": f"Chunked text extraction failed: {str(e)}"
+            }
+    
+    def summarize_chunks(self, chunks: List[str]) -> Dict[str, Any]:
+        """
+        Create a summary from multiple text chunks.
+        
+        Args:
+            chunks: List of text chunks
+            
+        Returns:
+            Dictionary containing combined analysis
+        """
+        try:
+            combined_analysis = {
+                "total_chunks": len(chunks),
+                "total_word_count": 0,
+                "total_character_count": 0,
+                "total_paragraph_count": 0,
+                "total_sentence_count": 0,
+                "chunk_previews": [],
+                "top_words_overall": {}
+            }
+            
+            all_words = {}
+            
+            for i, chunk in enumerate(chunks):
+                analysis = self.analyze_text(chunk)
+                
+                # Accumulate totals
+                combined_analysis["total_word_count"] += analysis.get("word_count", 0)
+                combined_analysis["total_character_count"] += analysis.get("character_count", 0)
+                combined_analysis["total_paragraph_count"] += analysis.get("paragraph_count", 0)
+                combined_analysis["total_sentence_count"] += analysis.get("sentence_count", 0)
+                
+                # Add chunk preview
+                preview = chunk[:300] + "..." if len(chunk) > 300 else chunk
+                combined_analysis["chunk_previews"].append({
+                    "chunk": i + 1,
+                    "word_count": analysis.get("word_count", 0),
+                    "preview": preview
+                })
+                
+                # Combine word frequencies
+                for word, count in analysis.get("top_words", []):
+                    all_words[word] = all_words.get(word, 0) + count
+            
+            # Get overall top words
+            combined_analysis["top_words_overall"] = sorted(all_words.items(), key=lambda x: x[1], reverse=True)[:15]
+            
+            # Calculate averages
+            if combined_analysis["total_sentence_count"] > 0:
+                combined_analysis["average_words_per_sentence"] = round(
+                    combined_analysis["total_word_count"] / combined_analysis["total_sentence_count"], 2
+                )
+            else:
+                combined_analysis["average_words_per_sentence"] = 0
+            
+            return {
+                "success": True,
+                "combined_analysis": combined_analysis
+            }
+            
+        except Exception as e:
+            return {
+                "success": False,
+                "error": f"Chunk summarization failed: {str(e)}"
+            }
 
 
 def smart_pdf_tools(
@@ -518,18 +685,22 @@ def smart_pdf_tools(
     page_range: Optional[str] = None,
     page_number: Optional[int] = None,
     search_term: Optional[str] = None,
-    case_sensitive: bool = False
+    case_sensitive: bool = False,
+    chunked: bool = False,
+    max_tokens_per_chunk: int = 25000
 ) -> Dict[str, Any]:
     """
     Comprehensive PDF processing tool with multiple capabilities.
     
     Args:
         pdf_path: Path to the PDF file
-        action: Action to perform (extract_text, extract_metadata, extract_tables, search_text, analyze)
+        action: Action to perform (extract_text, extract_metadata, extract_tables, search_text, analyze, extract_chunked, summarize_chunked)
         page_range: Page range for text extraction (e.g., "1-5" or "3-10")
         page_number: Specific page number for table extraction
         search_term: Text to search for (required for search_text action)
         case_sensitive: Whether search should be case sensitive
+        chunked: Whether to use chunking for large documents
+        max_tokens_per_chunk: Maximum tokens per chunk when using chunking
         
     Returns:
         Dictionary containing the results of the specified action
@@ -561,11 +732,57 @@ def smart_pdf_tools(
         
         # Execute the requested action
         if action == "extract_text":
-            result = processor.extract_text(pdf_path, parsed_page_range)
-            if result["success"] and "full_text" in result:
-                # Add text analysis
-                result["text_analysis"] = processor.analyze_text(result["full_text"])
+            if chunked:
+                result = processor.extract_text_chunked(pdf_path, parsed_page_range, max_tokens_per_chunk)
+            else:
+                result = processor.extract_text(pdf_path, parsed_page_range)
+                if result["success"] and "full_text" in result:
+                    # Add text analysis
+                    result["text_analysis"] = processor.analyze_text(result["full_text"])
             return result
+            
+        elif action == "extract_chunked":
+            # Force chunked extraction
+            return processor.extract_text_chunked(pdf_path, parsed_page_range, max_tokens_per_chunk)
+            
+        elif action == "summarize_chunked":
+            # Extract text with chunking, then create summary
+            chunked_result = processor.extract_text_chunked(pdf_path, parsed_page_range, max_tokens_per_chunk)
+            if not chunked_result["success"]:
+                return chunked_result
+            
+            if chunked_result.get("chunked", False):
+                chunks = chunked_result["chunks"]
+                summary_result = processor.summarize_chunks(chunks)
+                return {
+                    "success": True,
+                    "action": "summarize_chunked",
+                    "file_path": pdf_path,
+                    "extraction_info": {
+                        "total_pages": chunked_result.get("total_pages", 0),
+                        "processed_pages": chunked_result.get("processed_pages", 0),
+                        "method": chunked_result.get("method", "unknown"),
+                        "chunked": True,
+                        "total_chunks": chunked_result.get("total_chunks", 0)
+                    },
+                    "summary": summary_result.get("combined_analysis", {}) if summary_result.get("success") else {},
+                    "chunk_summaries": chunked_result.get("chunk_summaries", [])
+                }
+            else:
+                # Not chunked, use regular analysis
+                analysis = processor.analyze_text(chunked_result["full_text"])
+                return {
+                    "success": True,
+                    "action": "summarize_chunked",
+                    "file_path": pdf_path,
+                    "extraction_info": {
+                        "total_pages": chunked_result.get("total_pages", 0),
+                        "processed_pages": chunked_result.get("processed_pages", 0),
+                        "method": chunked_result.get("method", "unknown"),
+                        "chunked": False
+                    },
+                    "summary": analysis
+                }
             
         elif action == "extract_metadata":
             return processor.extract_metadata(pdf_path)
@@ -583,11 +800,24 @@ def smart_pdf_tools(
             
         elif action == "analyze":
             # Extract text first, then analyze
-            text_result = processor.extract_text(pdf_path, parsed_page_range)
-            if not text_result["success"]:
-                return text_result
+            if chunked:
+                text_result = processor.extract_text_chunked(pdf_path, parsed_page_range, max_tokens_per_chunk)
+                if not text_result["success"]:
+                    return text_result
+                
+                if text_result.get("chunked", False):
+                    # Use chunk summarization for large documents
+                    chunks = text_result["chunks"]
+                    summary_result = processor.summarize_chunks(chunks)
+                    analysis = summary_result.get("combined_analysis", {}) if summary_result.get("success") else {}
+                else:
+                    analysis = processor.analyze_text(text_result["full_text"])
+            else:
+                text_result = processor.extract_text(pdf_path, parsed_page_range)
+                if not text_result["success"]:
+                    return text_result
+                analysis = processor.analyze_text(text_result["full_text"])
             
-            analysis = processor.analyze_text(text_result["full_text"])
             return {
                 "success": True,
                 "action": "analyze",
@@ -596,14 +826,16 @@ def smart_pdf_tools(
                 "extraction_info": {
                     "total_pages": text_result.get("total_pages", 0),
                     "processed_pages": text_result.get("processed_pages", 0),
-                    "method": text_result.get("method", "unknown")
+                    "method": text_result.get("method", "unknown"),
+                    "chunked": text_result.get("chunked", False),
+                    "total_chunks": text_result.get("total_chunks", 0) if text_result.get("chunked") else 1
                 }
             }
             
         else:
             return {
                 "success": False,
-                "error": f"Unknown action: {action}. Use: extract_text, extract_metadata, extract_tables, search_text, or analyze"
+                "error": f"Unknown action: {action}. Use: extract_text, extract_metadata, extract_tables, search_text, analyze, extract_chunked, or summarize_chunked"
             }
             
     except Exception as e:
@@ -629,7 +861,7 @@ SMART_PDF_TOOLS_SCHEMA = {
                 "action": {
                     "type": "string",
                     "description": "Action to perform on the PDF",
-                    "enum": ["extract_text", "extract_metadata", "extract_tables", "search_text", "analyze"],
+                    "enum": ["extract_text", "extract_metadata", "extract_tables", "search_text", "analyze", "extract_chunked", "summarize_chunked"],
                     "default": "extract_text"
                 },
                 "page_range": {
@@ -648,6 +880,16 @@ SMART_PDF_TOOLS_SCHEMA = {
                     "type": "boolean",
                     "description": "Whether text search should be case sensitive",
                     "default": False
+                },
+                "chunked": {
+                    "type": "boolean",
+                    "description": "Whether to use chunking for large documents",
+                    "default": False
+                },
+                "max_tokens_per_chunk": {
+                    "type": "integer",
+                    "description": "Maximum tokens per chunk when using chunking",
+                    "default": 25000
                 }
             },
             "required": ["pdf_path"]

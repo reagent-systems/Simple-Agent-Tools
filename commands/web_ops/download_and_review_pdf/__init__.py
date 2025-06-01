@@ -137,7 +137,7 @@ class PDFDownloadReviewer:
     
     def review_pdf(self, pdf_path: str, review_type: str = "comprehensive") -> Dict[str, Any]:
         """
-        Review PDF using smart_pdf_tools.
+        Review PDF using smart_pdf_tools with automatic chunking for large documents.
         
         Args:
             pdf_path: Path to PDF file
@@ -161,16 +161,38 @@ class PDFDownloadReviewer:
                 review_results["tables"] = smart_pdf_tools(pdf_path, action="extract_tables")
                 
             elif review_type == "quick":
-                # Quick review: metadata + first 3 pages text + analysis
+                # Quick review: metadata + first 3 pages text + analysis (chunked if needed)
                 review_results["metadata"] = smart_pdf_tools(pdf_path, action="extract_metadata")
-                review_results["text_preview"] = smart_pdf_tools(pdf_path, action="extract_text", page_range="1-3")
+                review_results["text_preview"] = smart_pdf_tools(
+                    pdf_path, 
+                    action="extract_text", 
+                    page_range="1-3",
+                    chunked=True,
+                    max_tokens_per_chunk=15000
+                )
                 
             else:  # comprehensive
-                # Full review: everything
+                # Full review with chunking for large documents
                 review_results["metadata"] = smart_pdf_tools(pdf_path, action="extract_metadata")
-                review_results["full_text"] = smart_pdf_tools(pdf_path, action="extract_text")
+                
+                # Use chunked summarization for full text to avoid token limits
+                review_results["text_summary"] = smart_pdf_tools(
+                    pdf_path, 
+                    action="summarize_chunked",
+                    chunked=True,
+                    max_tokens_per_chunk=20000
+                )
+                
+                # Extract tables
                 review_results["tables"] = smart_pdf_tools(pdf_path, action="extract_tables")
-                review_results["analysis"] = smart_pdf_tools(pdf_path, action="analyze")
+                
+                # Use chunked analysis
+                review_results["analysis"] = smart_pdf_tools(
+                    pdf_path, 
+                    action="analyze",
+                    chunked=True,
+                    max_tokens_per_chunk=20000
+                )
             
             return {
                 "success": True,
@@ -191,7 +213,7 @@ class PDFDownloadReviewer:
     
     def generate_summary(self, review_results: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Generate a summary from review results.
+        Generate a summary from review results, handling both chunked and non-chunked text.
         
         Args:
             review_results: Results from PDF review
@@ -217,20 +239,59 @@ class PDFDownloadReviewer:
                     "creation_date": metadata.get("creation_date", "Unknown")
                 }
             
-            # Extract content summary from text analysis
-            if "analysis" in review_results and review_results["analysis"].get("success"):
-                text_analysis = review_results["analysis"].get("text_analysis", {})
+            # Extract content summary from chunked text summary or analysis
+            if "text_summary" in review_results and review_results["text_summary"].get("success"):
+                text_summary = review_results["text_summary"].get("summary", {})
+                extraction_info = review_results["text_summary"].get("extraction_info", {})
+                
                 summary["content_summary"] = {
-                    "word_count": text_analysis.get("word_count", 0),
-                    "paragraph_count": text_analysis.get("paragraph_count", 0),
-                    "sentence_count": text_analysis.get("sentence_count", 0),
-                    "top_words": text_analysis.get("top_words", [])[:5]  # Top 5 words
+                    "total_word_count": text_summary.get("total_word_count", 0),
+                    "total_paragraph_count": text_summary.get("total_paragraph_count", 0),
+                    "total_sentence_count": text_summary.get("total_sentence_count", 0),
+                    "top_words": [word for word, count in text_summary.get("top_words_overall", [])[:5]],
+                    "chunked": extraction_info.get("chunked", False),
+                    "total_chunks": extraction_info.get("total_chunks", 0)
                 }
+                
+                # Add chunk previews if available
+                chunk_summaries = review_results["text_summary"].get("chunk_summaries", [])
+                if chunk_summaries:
+                    summary["chunk_info"] = {
+                        "total_chunks": len(chunk_summaries),
+                        "previews": [cs.get("preview", "") for cs in chunk_summaries[:3]]  # First 3 chunk previews
+                    }
+                    
+            elif "analysis" in review_results and review_results["analysis"].get("success"):
+                text_analysis = review_results["analysis"].get("text_analysis", {})
+                extraction_info = review_results["analysis"].get("extraction_info", {})
+                
+                if extraction_info.get("chunked", False):
+                    # Chunked analysis results
+                    summary["content_summary"] = {
+                        "total_word_count": text_analysis.get("total_word_count", 0),
+                        "total_paragraph_count": text_analysis.get("total_paragraph_count", 0),
+                        "total_sentence_count": text_analysis.get("total_sentence_count", 0),
+                        "top_words": [word for word, count in text_analysis.get("top_words_overall", [])[:5]],
+                        "chunked": True,
+                        "total_chunks": extraction_info.get("total_chunks", 0)
+                    }
+                else:
+                    # Regular analysis results
+                    summary["content_summary"] = {
+                        "word_count": text_analysis.get("word_count", 0),
+                        "paragraph_count": text_analysis.get("paragraph_count", 0),
+                        "sentence_count": text_analysis.get("sentence_count", 0),
+                        "top_words": [word for word, count in text_analysis.get("top_words", [])[:5]],
+                        "chunked": False
+                    }
+                    
             elif "text_preview" in review_results and review_results["text_preview"].get("success"):
+                # Handle text preview (from quick review)
                 text_analysis = review_results["text_preview"].get("text_analysis", {})
                 summary["content_summary"] = {
                     "word_count_preview": text_analysis.get("word_count", 0),
-                    "note": "Based on first 3 pages only"
+                    "note": "Based on first 3 pages only",
+                    "chunked": review_results["text_preview"].get("chunked", False)
                 }
             
             # Extract table information
@@ -240,17 +301,27 @@ class PDFDownloadReviewer:
                     summary["key_findings"].append(f"Contains {tables_count} table(s)")
             
             # Extract text preview for key findings
-            if "full_text" in review_results and review_results["full_text"].get("success"):
-                full_text = review_results["full_text"].get("full_text", "")
-                if full_text:
-                    # Get first 500 characters as preview
-                    preview = full_text[:500].strip()
-                    if len(full_text) > 500:
-                        preview += "..."
-                    summary["text_preview"] = preview
+            if "text_summary" in review_results and review_results["text_summary"].get("success"):
+                # Use chunk previews for large documents
+                chunk_summaries = review_results["text_summary"].get("chunk_summaries", [])
+                if chunk_summaries and len(chunk_summaries) > 0:
+                    first_chunk_preview = chunk_summaries[0].get("preview", "")
+                    if first_chunk_preview:
+                        summary["text_preview"] = first_chunk_preview[:500]
+                        if len(first_chunk_preview) > 500:
+                            summary["text_preview"] += "..."
+                            
             elif "text_preview" in review_results and review_results["text_preview"].get("success"):
-                preview_text = review_results["text_preview"].get("full_text", "")
-                if preview_text:
+                # Use text preview from quick review
+                if "chunks" in review_results["text_preview"]:
+                    chunks = review_results["text_preview"]["chunks"]
+                    if chunks:
+                        preview = chunks[0][:500]
+                        if len(chunks[0]) > 500:
+                            preview += "..."
+                        summary["text_preview"] = preview
+                elif "full_text" in review_results["text_preview"]:
+                    preview_text = review_results["text_preview"]["full_text"]
                     preview = preview_text[:500].strip()
                     if len(preview_text) > 500:
                         preview += "..."
