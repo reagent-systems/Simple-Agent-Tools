@@ -10,8 +10,6 @@ from typing import Dict, Any, Optional, List
 from github import Github, GithubException
 import re
 from commands import register_command
-from core.security import get_secure_path
-from core.config import OUTPUT_DIR
 
 def github_fork_clone(
     repo_url: str,
@@ -72,15 +70,11 @@ def github_fork_clone(
             if not target_dir:
                 target_dir = repo_name
                 
-            # Ensure target_dir is within the output directory
-            # Note: this will convert the path to be inside OUTPUT_DIR
-            secure_target_dir = get_secure_path(target_dir, OUTPUT_DIR)
-            
             # Make sure the parent directory exists
-            os.makedirs(os.path.dirname(secure_target_dir), exist_ok=True)
+            os.makedirs(os.path.dirname(target_dir), exist_ok=True)
             
             # Clone the fork
-            clone_cmd = ["git", "clone", clone_url, secure_target_dir]
+            clone_cmd = ["git", "clone", clone_url, target_dir]
                 
             process = subprocess.run(
                 clone_cmd,
@@ -102,7 +96,7 @@ def github_fork_clone(
             upstream_cmd = [
                 "git", 
                 "-C", 
-                secure_target_dir, 
+                target_dir, 
                 "remote", 
                 "add", 
                 "upstream", 
@@ -123,12 +117,12 @@ def github_fork_clone(
                     "warning": "Repository forked and cloned, but failed to set upstream remote",
                     "fork_url": fork.html_url,
                     "upstream_error": upstream_process.stderr,
-                    "repo_path": secure_target_dir
+                    "repo_path": target_dir
                 }
                 
             # Checkout specific branch if specified
             if branch:
-                checkout_cmd = ["git", "-C", secure_target_dir, "checkout", branch]
+                checkout_cmd = ["git", "-C", target_dir, "checkout", branch]
                 checkout_process = subprocess.run(
                     checkout_cmd,
                     stdout=subprocess.PIPE,
@@ -143,20 +137,20 @@ def github_fork_clone(
                         "warning": f"Repository forked and cloned, but failed to checkout branch '{branch}'",
                         "fork_url": fork.html_url,
                         "checkout_error": checkout_process.stderr,
-                        "repo_path": secure_target_dir
+                        "repo_path": target_dir
                     }
             
             # Get repository info - list files in root directory
             files = []
-            if os.path.exists(secure_target_dir):
-                files = os.listdir(secure_target_dir)
+            if os.path.exists(target_dir):
+                files = os.listdir(target_dir)
                 
             return {
                 "success": True,
                 "message": "Repository forked and cloned successfully",
                 "fork_url": fork.html_url,
                 "original_url": source_repo.html_url,
-                "clone_path": secure_target_dir,
+                "clone_path": target_dir,
                 "origin_remote": fork.clone_url,
                 "upstream_remote": source_repo.clone_url,
                 "branch": branch if branch else source_repo.default_branch,

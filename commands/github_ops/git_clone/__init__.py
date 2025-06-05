@@ -1,6 +1,6 @@
 """Git clone command for SimpleAgent.
 
-This module provides functionality to safely clone git repositories into the agent's output directory.
+This module provides functionality to clone git repositories.
 """
 
 import os
@@ -9,14 +9,13 @@ import shutil
 import re
 from typing import Dict, Any, Union
 from commands import register_command
-from core.agent import get_secure_path
 
 def git_clone(repo_url: str, target_dir: str = "", branch: str = "") -> Dict[str, Any]:
-    """Clone a git repository into the agent's output directory.
+    """Clone a git repository.
     
     Args:
         repo_url: The URL of the git repository to clone (e.g., 'https://github.com/owner/repo')
-        target_dir: The target directory name within the output directory (defaults to repo name)
+        target_dir: The target directory name (defaults to repo name)
         branch: Optional branch to checkout after cloning
         
     Returns:
@@ -38,24 +37,13 @@ def git_clone(repo_url: str, target_dir: str = "", branch: str = "") -> Dict[str
         if not target_dir:
             target_dir = repo_name
             
-        # Make sure the target directory is within the output directory
-        # This uses the current working directory, which should already be set to output_dir
-        # by the agent's run method when commands are executed
         target_path = os.path.abspath(target_dir)
-        current_dir = os.path.abspath(os.getcwd())
-        
-        # Safety check - ensure we're cloning inside our current directory
-        if not target_path.startswith(current_dir):
-            # Force the target to be within current directory
-            target_path = os.path.join(current_dir, target_dir)
             
         # Create a clean target directory
         if os.path.exists(target_path):
-            # Only remove if it's within our output directory (extra safety check)
-            if target_path.startswith(current_dir):
-                # Rename rather than delete for safety
-                backup_dir = f"{target_path}_old_{int(os.path.getmtime(target_path))}"
-                shutil.move(target_path, backup_dir)
+            # Rename rather than delete for safety
+            backup_dir = f"{target_path}_old_{int(os.path.getmtime(target_path))}"
+            shutil.move(target_path, backup_dir)
                 
         # Prepare command with proper arguments
         git_cmd = ["git", "clone"]
@@ -187,7 +175,7 @@ GIT_CLONE_SCHEMA = {
     "type": "function",
     "function": {
         "name": "git_clone",
-        "description": "Clone a git repository into the agent's output directory",
+        "description": "Clone a git repository",
         "parameters": {
             "type": "object",
             "properties": {
@@ -197,7 +185,7 @@ GIT_CLONE_SCHEMA = {
                 },
                 "target_dir": {
                     "type": "string",
-                    "description": "Optional target directory name within the output directory (defaults to repo name)"
+                    "description": "Optional target directory name (defaults to repo name)"
                 },
                 "branch": {
                     "type": "string",
